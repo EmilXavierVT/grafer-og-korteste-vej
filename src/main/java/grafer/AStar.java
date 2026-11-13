@@ -1,86 +1,91 @@
 package grafer;
 
-import grafer.SearchStep.Candidate;
-import grafer.SearchStep.Change;
-
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.PriorityQueue;
 import java.util.Set;
-import java.util.function.Consumer;
 
-final class AStar {
-    record Cell(int row, int column) {
-        List<Cell> neighbors() {
-            return List.of(new Cell(row - 1, column), new Cell(row, column + 1),
-                    new Cell(row + 1, column), new Cell(row, column - 1));
+/** Searches a grid where '.' is open and each horizontal or vertical move costs one. */
+public final class AStar {
+    /** Zero-based grid coordinates. */
+    public record Cell(int row, int column) {}
+
+    private final List<String> grid;
+    private final Cell goal;
+    private final Map<Cell, Long> distances = new HashMap<>();
+    private final Map<Cell, Cell> previous = new HashMap<>();
+    private final Set<Cell> visited = new HashSet<>();
+    private final List<Cell> queue = new ArrayList<>();
+    private final List<Cell> route = new ArrayList<>();
+    private Cell current;
+
+    public AStar(List<String> grid, Cell start, Cell goal) {
+        this.grid = List.copyOf(grid);
+        if (!isOpen(start) || !isOpen(goal)) {
+            throw new IllegalArgumentException("Start and goal must be open cells.");
         }
+        this.goal = goal;
+        distances.put(start, 0L);
+        queue.add(start);
     }
 
-    static Optional<Route<Cell>> findPath(List<String> grid, Cell start, Cell goal,
-                                          Consumer<SearchStep<Cell>> onStep) {
-        if (!isRoad(grid, start) || !isRoad(grid, goal)) {
-            throw new IllegalArgumentException("Start og mål skal ligge på vejceller i gridet.");
+    public SearchProgress<Cell> progress() {
+        return new SearchProgress<>(current, queue, visited, distances, route);
+    }
+
+    public SearchProgress<Cell> step() {
+        if (queue.isEmpty() || !route.isEmpty()) {
+            return progress();
         }
 
-        Map<Cell, Long> distances = new HashMap<>();
-        Map<Cell, Cell> predecessors = new HashMap<>();
-        Set<Cell> settled = new LinkedHashSet<>();
-        PriorityQueue<Candidate<Cell>> queue = new PriorityQueue<>(
-                Comparator.comparingLong(Candidate<Cell>::f)
-                        .thenComparingLong(Candidate::h)
-                        .thenComparingInt(entry -> entry.node().row())
-                        .thenComparingInt(entry -> entry.node().column()));
+        current = queue.remove(0);
+        visited.add(current);
+        if (current.equals(goal)) {
+            for (Cell cell = goal; cell != null; cell = previous.get(cell)) {
+                route.add(cell);
+            }
+            Collections.reverse(route);
+            return progress();
+        }
 
-        distances.put(start, 0L);
-        queue.add(new Candidate<>(start, 0, manhattan(start, goal)));
-
-        while (!queue.isEmpty()) {
-            Candidate<Cell> current = queue.remove();
-            if (!settled.add(current.node())) {
+        List<Cell> neighbors = List.of(
+                new Cell(current.row() - 1, current.column()),
+                new Cell(current.row(), current.column() + 1),
+                new Cell(current.row() + 1, current.column()),
+                new Cell(current.row(), current.column() - 1)
+        );
+        long newDistance = distances.get(current) + 1;
+        for (Cell next : neighbors) {
+            if (!isOpen(next) || visited.contains(next)) {
                 continue;
             }
-
-            boolean reachedGoal = current.node().equals(goal);
-            List<Change<Cell>> changes = new ArrayList<>();
-            if (!reachedGoal) {
-                for (Cell next : current.node().neighbors()) {
-                    if (!isRoad(grid, next)) {
-                        continue;
-                    }
-
-                    long candidate = current.g() + 1;
-                    Long oldDistance = distances.get(next);
-                    if (oldDistance == null || candidate < oldDistance) {
-                        distances.put(next, candidate);
-                        predecessors.put(next, current.node());
-                        queue.add(new Candidate<>(next, candidate, manhattan(next, goal)));
-                        changes.add(new Change<>(next, oldDistance, candidate));
-                    }
+            Long oldDistance = distances.get(next);
+            if (oldDistance == null || newDistance < oldDistance) {
+                distances.put(next, newDistance);
+                previous.put(next, current);
+                if (oldDistance == null) {
+                    queue.add(next);
                 }
             }
-
-            onStep.accept(SearchStep.capture(current, queue, distances, settled, changes, reachedGoal));
-            if (reachedGoal) {
-                return Optional.of(Route.from(goal, current.g(), predecessors));
-            }
         }
-        return Optional.empty();
+        queue.sort(Comparator.comparingLong((Cell cell) -> distances.get(cell) + estimate(cell))
+                .thenComparingLong(this::estimate)
+                .thenComparingInt(Cell::row)
+                .thenComparingInt(Cell::column));
+        return progress();
     }
 
-    private static boolean isRoad(List<String> grid, Cell cell) {
-        return cell.row() >= 0 && cell.row() < grid.size()
+    public boolean isOpen(Cell cell) {
+        return cell != null && cell.row() >= 0 && cell.row() < grid.size()
                 && cell.column() >= 0 && cell.column() < grid.get(cell.row()).length()
                 && grid.get(cell.row()).charAt(cell.column()) == '.';
     }
 
-    // Ét lovligt træk koster 1 og kan højst mindske Manhattan-afstanden med 1.
-    private static long manhattan(Cell from, Cell goal) {
-        return Math.abs((long) from.row() - goal.row()) + Math.abs((long) from.column() - goal.column());
+    public long estimate(Cell cell) {
+        return Math.abs((long) cell.row() - goal.row()) + Math.abs((long) cell.column() - goal.column());
     }
 }

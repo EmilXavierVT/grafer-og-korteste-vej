@@ -1,65 +1,68 @@
 package grafer;
 
-import grafer.SearchStep.Candidate;
-import grafer.SearchStep.Change;
-
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
-import java.util.PriorityQueue;
+import java.util.Objects;
 import java.util.Set;
-import java.util.function.Consumer;
 
-final class Dijkstra {
-    record Road(String to, int kilometers) {
-        Road {
-            if (kilometers < 0) {
-                throw new IllegalArgumentException("Vejens vægt skal være mindst 0 km.");
-            }
-        }
+/** Finds a shortest route through a fixed graph with nonnegative road weights. */
+public final class Dijkstra {
+    private final WeightedNode goal;
+    private final Map<WeightedNode, Long> distances = new HashMap<>();
+    private final Map<WeightedNode, WeightedNode> previous = new HashMap<>();
+    private final Set<WeightedNode> visited = new HashSet<>();
+    private final List<WeightedNode> queue = new ArrayList<>();
+    private final List<WeightedNode> route = new ArrayList<>();
+    private WeightedNode current;
+
+    public Dijkstra(WeightedNode start, WeightedNode goal) {
+        this.goal = Objects.requireNonNull(goal, "goal");
+        distances.put(Objects.requireNonNull(start, "start"), 0L);
+        queue.add(start);
     }
 
-    static Optional<Route<String>> findPath(Map<String, List<Road>> roads, String start, String goal,
-                                            Consumer<SearchStep<String>> onStep) {
-        Map<String, Long> distances = new HashMap<>();
-        Map<String, String> predecessors = new HashMap<>();
-        Set<String> settled = new LinkedHashSet<>();
-        PriorityQueue<Candidate<String>> queue = new PriorityQueue<>(
-                Comparator.comparingLong(Candidate<String>::g).thenComparing(Candidate::node));
+    public SearchProgress<WeightedNode> progress() {
+        return new SearchProgress<>(current, queue, visited, distances, route);
+    }
 
-        distances.put(start, 0L);
-        queue.add(new Candidate<>(start, 0, 0));
+    public SearchProgress<WeightedNode> step() {
+        if (queue.isEmpty() || !route.isEmpty()) {
+            return progress();
+        }
 
-        while (!queue.isEmpty()) {
-            Candidate<String> current = queue.remove();
-            if (!settled.add(current.node())) {
+        current = queue.remove(0);
+        visited.add(current);
+        if (current == goal) {
+            for (WeightedNode city = goal; city != null; city = previous.get(city)) {
+                route.add(city);
+            }
+            Collections.reverse(route);
+            return progress();
+        }
+
+        long distanceFromStart = distances.get(current);
+        for (Map.Entry<WeightedNode, Integer> road : current.getNeighbors().entrySet()) {
+            WeightedNode next = road.getKey();
+            if (visited.contains(next)) {
                 continue;
             }
-
-            boolean reachedGoal = current.node().equals(goal);
-            List<Change<String>> changes = new ArrayList<>();
-            if (!reachedGoal) {
-                for (Road road : roads.getOrDefault(current.node(), List.of())) {
-                    long candidate = current.g() + road.kilometers();
-                    Long oldDistance = distances.get(road.to());
-                    if (oldDistance == null || candidate < oldDistance) {
-                        distances.put(road.to(), candidate);
-                        predecessors.put(road.to(), current.node());
-                        queue.add(new Candidate<>(road.to(), candidate, 0));
-                        changes.add(new Change<>(road.to(), oldDistance, candidate));
-                    }
+            long newDistance = distanceFromStart + road.getValue();
+            Long oldDistance = distances.get(next);
+            if (oldDistance == null || newDistance < oldDistance) {
+                distances.put(next, newDistance);
+                previous.put(next, current);
+                if (oldDistance == null) {
+                    queue.add(next);
                 }
             }
-
-            onStep.accept(SearchStep.capture(current, queue, distances, settled, changes, reachedGoal));
-            if (reachedGoal) {
-                return Optional.of(Route.from(goal, current.g(), predecessors));
-            }
         }
-        return Optional.empty();
+        queue.sort(Comparator.comparingLong((WeightedNode city) -> distances.get(city))
+                .thenComparing(WeightedNode::getName));
+        return progress();
     }
 }

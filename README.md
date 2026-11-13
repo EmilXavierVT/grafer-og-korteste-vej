@@ -1,49 +1,30 @@
-# Grafer og korteste vej
+# Route Lab
 
-To rutesøgninger i Java 17. Dijkstra finder den billigste rute i et rettet vejnet. A* finder den korteste rute gennem et grid med veje og forhindringer.
-
-## Kør programmet
-
-Kør fra repoets rod med JDK 17 eller nyere og Maven.
+A Java 17 desktop demo of Dijkstra and A*. Run `grafer.Main` in IntelliJ to open the two tabs. You can also use these commands from the project folder.
 
 ```sh
 mvn compile
 java -cp target/classes grafer.Main
 ```
 
-Vælg `1` for Dijkstra eller `2` for A*. Vælg startby og målby, eller tryk **Enter** for at bruge standardruten. Under søgningen viser **Enter** ét trin mere, og `a` viser resten af trinnene uden pauser.
+Choose the start and goal above the map. **Step** advances once, **Play** advances automatically, and **Reset** restarts the selected search. The arrow in the queue marks the next choice.
 
-Du kan også køre alle trin direkte fra kommandolinjen.
+## Dijkstra road network
 
-```sh
-java -cp target/classes grafer.Main dijkstra Skovby Havneby
-java -cp target/classes grafer.Main astar Nordby Østby
-```
+The nine towns are connected by 12 one-way roads. Arrowheads show the direction and the number beside each road is its length in kilometres. Dijkstra picks the town with the smallest known distance `g` from the start. The map shows how these distances change. The shortest route turns green when the goal is selected.
 
-## Hvad viser visualiseringen?
+The default route is **23 km** from Skovby → Engby → Søby → Lilleby → Højby → Fjordby → Havneby. Try going from Havneby to Skovby to see what happens when the queue runs out.
 
-Kortet viser, **hvordan søgningen breder sig**. En by eller celle går fra uopdaget `.` til opdaget `+` og bliver markeret med `@`, når algoritmen tager den ud af køen. På de følgende trin betyder `x`, at den korteste afstand til den er fastlagt. Til sidst fremhæver `*` ruten, så man kan se, hvilke af de undersøgte byer eller celler ruten faktisk går igennem.
+## A* cheese maze
 
-Køen viser, **hvorfor den næste by eller celle vælges**. Første række er markeret med `→`, og tallene i tabellen gør det muligt at sammenligne valget med alternativerne. Kortet og køen opdateres efter, at den aktuelle by eller celles naboer er undersøgt. Når målet tages ud af køen, slutter søgningen.
+The maze has 10 × 10 tiles. The mouse can move horizontally or vertically on open tiles, at a cost of one move per tile. Nordby, Østby, Vestby and Sydby are the selectable rooms.
 
-### Dijkstra
+- `g` is the number of moves from the start along the best route found so far.
+- `h` is the Manhattan distance to the cheese. Every open tile shows its `h`, and warmer tiles represent a stronger scent and a smaller `h`.
+- `f = g + h` is the queue priority. A* picks the smallest `f` first.
 
-Vejnettet har ni byer og 12 ensrettede veje. Pilene på kortet viser kørselsretningen, og tallet ved hver pil er vejens længde i kilometer. Dijkstra vælger den by med mindst `g`, den hidtil korteste kendte afstand fra startbyen. Bynavnet afgør rækkefølgen, hvis to byer har samme `g`.
+Scent spreads across walls, so it estimates distance even when the mouse needs a detour. From Nordby the cheese at Østby starts at **h = 7**, and the shortest route takes **15 moves**. During the search, the blue outline marks the tile A* is exploring. Once A* finds a route, **Step** moves the mouse along it one tile at a time until it reaches the cheese.
 
-Fra Skovby opdager søgningen først Lilleby til 12 km og Engby til 4 km. Engby bliver valgt først. Senere kommer søgningen til Søby på 7 km og finder en vej på 2 km videre til Lilleby. Det sænker Lillebys `g` fra 12 til 9 km og gør Søby til Lillebys forgænger.
+`Main` opens the window. The search classes take a graph or grid and return a read-only `SearchProgress` snapshot with the queue, known distances, visited nodes and route. They can run without Swing. [Dijkstra.java](src/main/java/grafer/Dijkstra.java) · [AStar.java](src/main/java/grafer/AStar.java) · [SearchProgress.java](src/main/java/grafer/SearchProgress.java)
 
-**Standardruten på 23 km** går fra Skovby → Engby → Søby → Lilleby → Højby → Fjordby → Havneby. Havneby har ingen udgående veje, så man kan afprøve en søgning uden resultat ved at bytte om på start og mål.
-
-### A*
-
-Gridet er 10 × 10 med Nordby `(2,2)`, Østby `(2,9)`, Vestby `(8,2)` og Sydby `(9,8)`. Koordinaterne angiver række og kolonne. `#` er en spærret celle. Vandrette og lodrette træk koster ét hver.
-
-A* vælger cellen med lavest `f = g + h`. `g` tæller træk fra start, og `h` er Manhattan-afstanden til målet, altså forskellen i række plus forskellen i kolonne regnet som positive afstande. Ved samme `f` prioriteres laveste `h`, derefter række og kolonne. Hvert træk kan højst sænke `h` med én, så `h` er en nedre grænse for antallet af træk til målet.
-
-Fra Nordby har cellerne `(2,3)` og `(3,2)` begge `g = 1`. Cellen `(2,3)` vælges først, fordi dens `h` er 6 og giver `f = 7`, mens `(3,2)` har `h = 8` og `f = 9`. Senere tvinger spærringerne søgningen ned til række 6. **Den korteste rute fra Nordby til Østby tager 15 træk.**
-
-## Koden
-
-- [DemoMaps.java](src/main/java/grafer/DemoMaps.java) indeholder de to kort, bynavne og vejvægte.
-- [Dijkstra.java](src/main/java/grafer/Dijkstra.java) og [AStar.java](src/main/java/grafer/AStar.java) implementerer søgningerne. Begge gemmer en forgænger, når en kortere vej findes, og følger forgængerne baglæns fra målet for at finde ruten.
-- [ConsoleView.java](src/main/java/grafer/ConsoleView.java) viser valg, kø og rute, og [ConsoleMaps.java](src/main/java/grafer/ConsoleMaps.java) tegner kortene ud fra den aktuelle søgetilstand.
+The `grafer.ui` package contains the desktop controls, the road and maze drawings, and the mouse animation. The maze panel starts moving the mouse when the search returns a route. [RouteLabPanel.java](src/main/java/grafer/ui/RouteLabPanel.java) · [RoadMapPanel.java](src/main/java/grafer/ui/RoadMapPanel.java) · [MazePanel.java](src/main/java/grafer/ui/MazePanel.java)
